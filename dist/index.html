@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>GYMSHARK CLONE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: #F4F4F4;
+      }
+      /* Yoco Modal - Force on top of everything */
+      .yoco-popup-overlay,
+      .yoco-sdk-popup,
+      .yoco-modal,
+      [class*="yoco-popup"],
+      [class*="yoco-sdk"] {
+        z-index: 2147483647 !important; /* Maximum z-index */
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+      }
+      .yoco-popup-overlay iframe,
+      .yoco-sdk-popup iframe,
+      .yoco-modal iframe {
+        z-index: 2147483647 !important;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-zCBcL-YP.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BjXTvt2p.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDalb4JAzq9QBGO-CziHTSKy3IFv5-GYmQ&libraries=places"></script>
+    <script src="https://js.yoco.com/sdk/v1/yoco-sdk-web.js"></script>
+    <script>
+      // Force Yoco modal to cover everything including headers
+      (function() {
+        const styleYocoModal = (node) => {
+          // Apply maximum z-index to ensure modal is on top
+          node.style.setProperty('z-index', '2147483647', 'important');
+          node.style.setProperty('position', 'fixed', 'important');
+          node.style.setProperty('top', '0', 'important');
+          node.style.setProperty('left', '0', 'important');
+          node.style.setProperty('right', '0', 'important');
+          node.style.setProperty('bottom', '0', 'important');
+          node.style.setProperty('width', '100vw', 'important');
+          node.style.setProperty('height', '100vh', 'important');
+          
+          // If it's an overlay, make it full black
+          if (node.classList.contains('yoco-popup-overlay') || 
+              (node.className && node.className.includes && node.className.includes('overlay'))) {
+            node.style.setProperty('background', 'rgba(0,0,0,0.98)', 'important');
+          }
+        };
+        
+        const observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+              if (node.nodeType === 1) {
+                const isYoco = node.classList && (
+                  node.classList.contains('yoco-popup-overlay') ||
+                  node.classList.contains('yoco-sdk-popup') ||
+                  node.classList.contains('yoco-modal') ||
+                  (node.className && node.className.includes && node.className.includes('yoco'))
+                );
+                
+                if (isYoco) {
+                  // Style the main modal container
+                  styleYocoModal(node);
+                  
+                  // Style any iframes inside
+                  const iframes = node.querySelectorAll('iframe');
+                  iframes.forEach(iframe => {
+                    iframe.style.setProperty('z-index', '2147483647', 'important');
+                  });
+                  
+                  // Style close button
+                  setTimeout(() => {
+                    const closeBtn = document.querySelector('.yoco-close, [class*="yoco-close"], [class*="yoco"] [class*="close"]');
+                    if (closeBtn) {
+                      closeBtn.style.setProperty('position', 'absolute', 'important');
+                      closeBtn.style.setProperty('top', '20px', 'important');
+                      closeBtn.style.setProperty('right', '20px', 'important');
+                      closeBtn.style.setProperty('z-index', '2147483648', 'important');
+                      closeBtn.style.setProperty('width', '48px', 'important');
+                      closeBtn.style.setProperty('height', '48px', 'important');
+                      closeBtn.style.setProperty('background', 'white', 'important');
+                      closeBtn.style.setProperty('border-radius', '50%', 'important');
+                      closeBtn.style.setProperty('border', 'none', 'important');
+                      closeBtn.style.setProperty('font-size', '24px', 'important');
+                      closeBtn.style.setProperty('cursor', 'pointer', 'important');
+                      closeBtn.style.setProperty('box-shadow', '0 4px 15px rgba(0,0,0,0.3)', 'important');
+                    }
+                  }, 100);
+                }
+              }
+            });
+          });
+        });
+        
+        observer.observe(document.body, { childList: true, subtree: true });
+      })();
+    </script>
+  </body>
+</html>
