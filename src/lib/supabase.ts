@@ -5,7 +5,13 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://yzcufmbgcjhgswcdjhfb.supabase.co'
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable__7X8rKLz-Vo4_Tryy7FnWg_zXXfsr92'
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+  }
+})
 
 // Database types (for TypeScript)
 export type Database = {

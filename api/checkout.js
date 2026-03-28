@@ -22,7 +22,7 @@ export default function handler(req, res) {
   req.on('data', chunk => body += chunk);
   req.on('end', () => {
     try {
-      const { amount, reference } = JSON.parse(body || '{}');
+      const { amount, reference, returnUrl } = JSON.parse(body || '{}');
       
       if (!amount) {
         res.status(400).json({ error: 'Amount required' });
@@ -42,14 +42,16 @@ export default function handler(req, res) {
       }
 
       const externalId = `order${Date.now()}`;
+      
+      // Select the base return route using custom returnUrl (e.g. native app deep link) or Vercel default URL
       const siteUrl = 'https://gymshark-clone-zeta.vercel.app';
-
+      
       const requestBody = JSON.stringify({
         amount: amountInCents,
         currency: 'ZAR',
         externalId: externalId,
-        successUrl: `${siteUrl}/?payment=success&ref=${reference || externalId}`,
-        cancelUrl: `${siteUrl}/checkout`
+        successUrl: returnUrl ? `${returnUrl}?payment=success&ref=${reference || externalId}` : `${siteUrl}/?payment=success&ref=${reference || externalId}`,
+        cancelUrl: returnUrl ? `${returnUrl}?payment=cancelled` : `${siteUrl}/checkout`
       });
 
       const options = {

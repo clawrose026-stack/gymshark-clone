@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import { supabase } from './lib/supabase'
+import { Browser } from '@capacitor/browser'
+import { App as CapacitorApp } from '@capacitor/app'
 
 // Auth types
 interface User {
@@ -201,14 +203,19 @@ const IconCheckCircle = () => (
 )
 
 // Order Confirmation Component
-const OrderConfirmation = ({ total, onContinueShopping, onViewOrderStatus }: { 
+const OrderConfirmation = ({ total, orderRef, onContinueShopping, onViewOrderStatus }: { 
   total: number; 
+  orderRef: string;
   onContinueShopping: () => void;
   onViewOrderStatus: () => void;
 }) => (
   <div className="checkout-step slide-in order-confirmation">
     <div className="confirmation-icon">✓</div>
     <h3 className="step-title">Order Confirmed!</h3>
+    <div className="confirmation-total-box" style={{ background: '#f8f8f8', padding: '16px', borderRadius: '8px', marginBottom: '24px' }}>
+      <p style={{ margin: 0, fontSize: '14px', color: '#666' }}>Order Number</p>
+      <p style={{ margin: '4px 0 0 0', fontWeight: 700, fontSize: '18px' }}>{orderRef}</p>
+    </div>
     <p className="confirmation-message">
       Thank you for your purchase. Your order has been received and is being processed.
     </p>
@@ -342,8 +349,45 @@ function App() {
   
   // Store order total for confirmation screen (before cart is cleared)
   const [confirmedOrderTotal, setConfirmedOrderTotal] = useState<number>(0)
+  const [confirmedOrderRef, setConfirmedOrderRef] = useState<string>('')
   
-  // Check for payment success on mount
+  // App Deep Link listener (Native iOS/Android)
+  useEffect(() => {
+    const handleDeepLink = async (event: any) => {
+      const url = event.url;
+      if (url.includes('gymshark-clone://payment-success')) {
+        // Try to close any overlay
+        try { await Browser.close(); } catch (e) {}
+        
+        const urlObj = new URL(url);
+        const ref = urlObj.searchParams.get('ref');
+        
+        if (ref) {
+          // Update order status to paid and get order details
+          const { data } = await supabase.from('orders').update({ status: 'paid' }).eq('order_reference', ref).select().single();
+          if (data) {
+            setConfirmedOrderTotal(data.total_amount);
+          }
+          setConfirmedOrderRef(ref);
+          setCart([]);
+          setCheckoutStep(3);
+          setCurrentPage('checkout');
+        }
+      }
+    };
+    
+    // Add listener and ensure it's removed on cleanup
+    let listener: any;
+    CapacitorApp.addListener('appUrlOpen', (event) => {
+      handleDeepLink(event);
+    }).then(l => { listener = l; });
+    
+    return () => {
+      if (listener && listener.remove) listener.remove();
+    };
+  }, []); // Run once on mount
+
+  // Check for payment success on mount (Web Fallback)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const paymentStatus = urlParams.get('payment')
@@ -358,6 +402,7 @@ function App() {
         if (data) {
           setConfirmedOrderTotal(data.total_amount)
         }
+        setConfirmedOrderRef(orderRef)
         // Clear cart after storing total
         setCart([])
         // Show order confirmation
@@ -1239,7 +1284,10 @@ function App() {
         // Call our serverless function to create Yoco checkout
         console.log('5. Calling API...');
         
-        const response = await fetch('/api/checkout', {
+        const isNative = typeof window !== 'undefined' && window.location.protocol === 'capacitor:';
+        const targetApi = isNative ? 'https://gymshark-clone-zeta.vercel.app/api/checkout' : '/api/checkout';
+
+        const response = await fetch(targetApi, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1308,7 +1356,40 @@ function App() {
         console.log('=== PAYMENT DEBUG END ===');
         
         // Redirect to Yoco hosted checkout
-        window.location.href = data.redirectUrl;
+        if (typeof window !== 'undefined' && window.location.protocol === 'capacitor:') {
+          // Open the Yoco payment page securely within the App Overlay
+          await Browser.open({ url: data.redirectUrl });
+          
+          // Poll the database to see when payment is marked as paid by the cloud server
+          const checkPaymentInterval = setInterval(async () => {
+            const { data: orderData } = await supabase
+              .from('orders')
+              .select('status, total_amount')
+              .eq('order_reference', orderRef)
+              .single();
+              
+            if (orderData && orderData.status === 'paid') {
+              clearInterval(checkPaymentInterval);
+              await Browser.close(); // Close the Yoco overlay
+              setConfirmedOrderTotal(orderData.total_amount);
+              setCart([]);
+              setCheckoutStep(3); // Go to success page
+              setCurrentPage('checkout');
+              setProcessingPayment(false);
+            }
+          }, 2500); // Check every 2.5 seconds
+          
+          // Listen for the user manually closing the Safari overlay
+          Browser.addListener('browserFinished', () => {
+             clearInterval(checkPaymentInterval);
+             setProcessingPayment(false);
+             // Payment might have failed or user abandoned
+          });
+
+        } else {
+          // Standard web redirect
+          window.location.href = data.redirectUrl;
+        }
         
       } catch (error: any) {
         console.error('=== PAYMENT ERROR ===');
@@ -1621,6 +1702,7 @@ function App() {
             <div className="order-confirmation-full">
               <OrderConfirmation 
                 total={confirmedOrderTotal || getCartTotal() * 1.15}
+                orderRef={confirmedOrderRef}
                 onContinueShopping={() => {
                   setCart([])
                   setCheckoutStep(1)
