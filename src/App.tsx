@@ -1294,6 +1294,7 @@ function App() {
             amount: amountInCents,
             currency: 'ZAR',
             reference: orderRef,
+            returnUrl: isNative ? 'gymshark-clone://payment-success' : window.location.origin,
             metadata: {
               userId: user.id,
               email: user.email,
