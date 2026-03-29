@@ -104,16 +104,6 @@ const IconUserForm = () => (
   </svg>
 )
 
-// Profile Page Icons
-const IconGift = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 12 20 22 4 22 4 12"></polyline>
-    <rect x="2" y="7" width="20" height="5"></rect>
-    <line x1="12" y1="22" x2="12" y2="7"></line>
-    <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path>
-    <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
-  </svg>
-)
 
 const IconCreditCard = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -152,14 +142,11 @@ const IconHeadphones = () => (
   </svg>
 )
 
-const IconHandshake = () => (
+const IconHelp = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M11.5 19.5 9 21l-6-6 2.5-1.5"></path>
-    <path d="m13.5 19.5 2.5 1.5 6-6-2.5-1.5"></path>
-    <path d="M9 15a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2"></path>
-    <path d="M12 11.5V7"></path>
-    <path d="m16 8 3-3-2-2-3 3"></path>
-    <path d="m8 8-3-3 2-2 3 3"></path>
+    <circle cx="12" cy="12" r="10"></circle>
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+    <line x1="12" y1="17" x2="12.01" y2="17"></line>
   </svg>
 )
 
@@ -244,32 +231,50 @@ const OrderConfirmation = ({ total, orderRef, onContinueShopping, onViewOrderSta
 )
 
 // Order Status Timeline Component
-const OrderStatusTimeline = ({ status }: { status: string }) => {
-  const milestones = [
+const OrderStatusTimeline = ({ status, dbMilestones }: { status: string; dbMilestones?: any[] }) => {
+  const allMilestones = [
     { id: 'placed', label: 'Order Placed', icon: <IconCheckCircle /> },
     { id: 'confirmed', label: 'Payment Confirmed', icon: <IconCreditCard /> },
     { id: 'processing', label: 'Processing', icon: <IconPackage /> },
     { id: 'shipped', label: 'Shipped', icon: <IconTruck /> },
     { id: 'delivered', label: 'Delivered', icon: <IconMapPin /> },
   ]
-  
-  const currentIndex = milestones.findIndex(m => m.id === status)
-  
+
+  const reachedIds = dbMilestones ? dbMilestones.map(m => m.milestone) : []
+  const statusOrder = ['placed', 'confirmed', 'processing', 'shipped', 'delivered']
+  const currentMilestoneId = dbMilestones && dbMilestones.length > 0
+    ? statusOrder.filter(s => reachedIds.includes(s)).pop() || status
+    : status
+  const currentIndex = allMilestones.findIndex(m => m.id === currentMilestoneId)
+
   return (
     <div className="order-timeline">
-      {milestones.map((milestone, index) => (
-        <div 
-          key={milestone.id} 
-          className={`timeline-item ${index <= currentIndex ? 'completed' : ''} ${index === currentIndex ? 'current' : ''}`}
-        >
-          <div className="timeline-icon">{milestone.icon}</div>
-          <div className="timeline-content">
-            <span className="timeline-label">{milestone.label}</span>
-            {index === currentIndex && <span className="timeline-status">Current</span>}
+      {allMilestones.map((milestone, index) => {
+        const isReached = dbMilestones ? reachedIds.includes(milestone.id) : index <= currentIndex
+        const isCurrent = index === currentIndex
+        const dbEntry = dbMilestones?.find(m => m.milestone === milestone.id)
+
+        return (
+          <div
+            key={milestone.id}
+            className={`timeline-item ${isReached ? 'completed' : ''} ${isCurrent ? 'current' : ''}`}
+          >
+            <div className="timeline-icon">{milestone.icon}</div>
+            <div className="timeline-content">
+              <span className="timeline-label">{milestone.label}</span>
+              {isCurrent && <span className="timeline-status">Current</span>}
+              {dbEntry && (
+                <span className="timeline-date">
+                  {new Date(dbEntry.reached_at).toLocaleDateString('en-ZA', {
+                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                  })}
+                </span>
+              )}
+            </div>
+            {index < allMilestones.length - 1 && <div className="timeline-line" />}
           </div>
-          {index < milestones.length - 1 && <div className="timeline-line" />}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -315,8 +320,9 @@ function App() {
   const [currentPage, setCurrentPage] = useState('splash')
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [selectedSize, setSelectedSize] = useState('')
-  const [cart, setCart] = useState<{product: Product, size: string, quantity: number}[]>([])
+  const [cart, setCart] = useState<{product: Product, size: string, variantId: string | null, quantity: number}[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   
   // Auth state
@@ -346,10 +352,26 @@ function App() {
   
   // Order status state - used for viewing specific order details
   const [_selectedOrder, _setSelectedOrder] = useState<any>(null)
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([])
+  const [loadingSavedAddresses, setLoadingSavedAddresses] = useState(false)
   
   // Store order total for confirmation screen (before cart is cleared)
   const [confirmedOrderTotal, setConfirmedOrderTotal] = useState<number>(0)
-  const [confirmedOrderRef, setConfirmedOrderRef] = useState<string>('')
+  const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<string>('')
+  const [confirmedOrderId, setConfirmedOrderId] = useState<string>('')
+
+  // Orders state (top-level to fix React hooks rules)
+  const [orders, setOrders] = useState<any[]>([])
+  const [loadingOrders, setLoadingOrders] = useState(true)
+  const [orderMilestones, setOrderMilestones] = useState<any[]>([])
+  const [newName, setNewName] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [updateProfileError, setUpdateProfileError] = useState('')
+  const [updateProfileSuccess, setUpdateProfileSuccess] = useState('')
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false)
+
+  // Cart persistence ref
+  const cartLoadedRef = useRef(false)
   
   // App Deep Link listener (Native iOS/Android)
   useEffect(() => {
@@ -364,12 +386,39 @@ function App() {
         
         if (ref) {
           // Update order status to paid and get order details
-          const { data } = await supabase.from('orders').update({ status: 'paid' }).eq('order_reference', ref).select().single();
-          if (data) {
-            setConfirmedOrderTotal(data.total_amount);
+          const { data } = await supabase.from('orders').update({ status: 'paid', payment_status: 'paid' }).eq('order_number', ref).select().single();
+          const storedTotal = parseFloat(localStorage.getItem('pending-order-total') || '0');
+          if (data && data.total) {
+            setConfirmedOrderTotal(data.total);
+          } else if (storedTotal > 0) {
+            setConfirmedOrderTotal(storedTotal);
           }
-          setConfirmedOrderRef(ref);
+          setConfirmedOrderNumber(ref);
+          if (data?.id) setConfirmedOrderId(data.id);
           setCart([]);
+          try {
+            const sess = JSON.parse(localStorage.getItem('gymshark-session') || '{}');
+            if (sess.user?.id) {
+              localStorage.removeItem(`gymshark-cart-${sess.user.id}`);
+              
+              // Clear Supabase Cart
+              const { data: cartData } = await supabase.from('carts').select('id').eq('user_id', sess.user.id).single();
+              if (cartData) await supabase.from('cart_items').delete().eq('cart_id', cartData.id);
+              
+              // Insert Payment Record
+              if (data?.id) {
+                await supabase.from('payments').insert({
+                  order_id: data.id,
+                  user_id: sess.user.id,
+                  amount: data.total || storedTotal,
+                  provider: 'yoco',
+                  status: 'succeeded',
+                  payment_method: 'card'
+                });
+              }
+            }
+          } catch(e) {}
+          localStorage.removeItem('pending-order-total');
           setCheckoutStep(3);
           setCurrentPage('checkout');
         }
@@ -391,21 +440,46 @@ function App() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const paymentStatus = urlParams.get('payment')
-    const orderRef = urlParams.get('ref')
+    const orderNumber = urlParams.get('ref')
     
-    if (paymentStatus === 'success' && orderRef) {
+    if (paymentStatus === 'success' && orderNumber) {
       // Clear URL params
       window.history.replaceState({}, document.title, window.location.pathname)
+      const storedTotal = parseFloat(localStorage.getItem('pending-order-total') || '0')
       // Update order status to paid and get order details
-      supabase.from('orders').update({ status: 'paid' }).eq('order_reference', orderRef).select().single().then(({ data }) => {
-        // Store the order total for display
-        if (data) {
-          setConfirmedOrderTotal(data.total_amount)
+      supabase.from('orders').update({ status: 'paid', payment_status: 'paid' }).eq('order_number', orderNumber).select().single().then(async ({ data }) => {
+        if (data && data.total) {
+          setConfirmedOrderTotal(data.total)
+        } else if (storedTotal > 0) {
+          setConfirmedOrderTotal(storedTotal)
         }
-        setConfirmedOrderRef(orderRef)
-        // Clear cart after storing total
+        setConfirmedOrderNumber(orderNumber)
+        if (data?.id) setConfirmedOrderId(data.id)
+        // Clear cart and cart persistence
         setCart([])
-        // Show order confirmation
+        try {
+          const sess = JSON.parse(localStorage.getItem('gymshark-session') || '{}')
+          if (sess.user?.id) {
+            localStorage.removeItem(`gymshark-cart-${sess.user.id}`)
+            
+            // Clear Supabase Cart
+            const { data: cartData } = await supabase.from('carts').select('id').eq('user_id', sess.user.id).single();
+            if (cartData) await supabase.from('cart_items').delete().eq('cart_id', cartData.id);
+            
+            // Insert Payment Record
+            if (data?.id) {
+              await supabase.from('payments').insert({
+                order_id: data.id,
+                user_id: sess.user.id,
+                amount: data.total || storedTotal,
+                provider: 'yoco',
+                status: 'succeeded',
+                payment_method: 'card'
+              });
+            }
+          }
+        } catch(e) {}
+        localStorage.removeItem('pending-order-total')
         setCheckoutStep(3)
         setCurrentPage('checkout')
       })
@@ -470,6 +544,102 @@ function App() {
       subscription.unsubscribe()
     }
   }, [])
+
+  // Cart persistence - load from localStorage when user is identified
+  useEffect(() => {
+    if (user) {
+      cartLoadedRef.current = false
+      const savedCart = localStorage.getItem(`gymshark-cart-${user.id}`)
+      if (savedCart) {
+        try {
+          const parsed = JSON.parse(savedCart)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCart(parsed)
+          }
+        } catch (e) {
+          console.error('Failed to load cart from storage:', e)
+        }
+      }
+      const timer = setTimeout(() => { cartLoadedRef.current = true }, 300)
+      return () => clearTimeout(timer)
+    } else {
+      cartLoadedRef.current = false
+    }
+  }, [user?.id])
+
+  // Cart persistence - save to localStorage and Supabase on change
+  useEffect(() => {
+    if (user && cartLoadedRef.current) {
+      if (cart.length > 0) {
+        localStorage.setItem(`gymshark-cart-${user.id}`, JSON.stringify(cart))
+      } else {
+        localStorage.removeItem(`gymshark-cart-${user.id}`)
+      }
+      
+      // Async sync to Supabase
+      const syncCart = async () => {
+        try {
+          // 1. Get or create cart
+          let { data: cartData } = await supabase.from('carts').select('id').eq('user_id', user.id).single()
+          if (!cartData) {
+            const { data: newCart } = await supabase.from('carts').insert({ user_id: user.id }).select('id').single()
+            cartData = newCart
+          }
+          if (!cartData) return
+          
+          // 2. Clear existing items
+          await supabase.from('cart_items').delete().eq('cart_id', cartData.id)
+          
+          // 3. Insert new items if any
+          if (cart.length > 0) {
+            await supabase.from('cart_items').insert(
+              cart.map(item => ({
+                cart_id: cartData.id,
+                product_id: item.product.id,
+                quantity: item.quantity,
+                unit_price: item.product.base_price
+              }))
+            )
+          }
+        } catch (err) {
+          console.error('Failed to sync cart to Supabase', err)
+        }
+      }
+      
+      syncCart()
+    }
+  }, [cart, user?.id])
+
+  // Fetch orders when navigating to orders page
+  useEffect(() => {
+    if (currentPage === 'orders' && user) {
+      setLoadingOrders(true)
+      supabase
+        .from('orders')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .then(({ data, error }) => {
+          if (!error && data) setOrders(data)
+          setLoadingOrders(false)
+        })
+    }
+  }, [currentPage])
+
+  // Fetch milestones when viewing order status
+  useEffect(() => {
+    if (currentPage === 'order-status' && _selectedOrder?.id) {
+      supabase
+        .from('order_milestones')
+        .select('*')
+        .eq('order_id', _selectedOrder.id)
+        .order('reached_at', { ascending: true })
+        .then(({ data, error }) => {
+          if (!error && data) setOrderMilestones(data)
+          else setOrderMilestones([])
+        })
+    }
+  }, [currentPage, _selectedOrder])
 
   const checkSession = async () => {
     try {
@@ -604,10 +774,12 @@ function App() {
 
   const handleLogout = async () => {
     try {
+      // Clear cart persistence before logout
+      if (user) localStorage.removeItem(`gymshark-cart-${user.id}`)
       await supabase.auth.signOut()
       setUser(null)
       setCart([])
-      // Clear localStorage on logout
+      cartLoadedRef.current = false
       localStorage.removeItem('gymshark-session')
       setCurrentPage('home')
     } catch (error) {
@@ -655,7 +827,30 @@ function App() {
     return images[slug] || 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600&h=800&fit=crop'
   }
 
+  const fetchSavedAddresses = async () => {
+    if (!user) return
+    setLoadingSavedAddresses(true)
+    try {
+      const { data, error } = await supabase
+        .from('addresses')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(3)
+      
+      if (data) setSavedAddresses(data)
+      if (error) console.error('Address fetch error:', error)
+    } catch (e) {
+      console.error('Error fetching addresses:', e)
+    } finally {
+      setLoadingSavedAddresses(false)
+    }
+  }
+
   const addToCart = (product: typeof products[0], size: string) => {
+    const variant = product.variants?.find(v => v.size === size);
+    const variantId = variant ? variant.id : null;
+    
     const existingItem = cart.find(item => item.product.id === product.id && item.size === size)
     if (existingItem) {
       setCart(cart.map(item => 
@@ -664,9 +859,9 @@ function App() {
           : item
       ))
     } else {
-      setCart([...cart, { product, size, quantity: 1 }])
+    setCart([...cart, { product, size, variantId, quantity: 1 }])
     }
-    setCurrentPage('home')
+    setCurrentPage('search')
   }
 
   const updateQuantity = (index: number, newQuantity: number) => {
@@ -947,17 +1142,31 @@ function App() {
           </button>
           <div className="search-bar">
             <IconSearch />
-            <input type="text" placeholder="SEARCH" className="search-input" />
+            <input 
+              type="text" 
+              placeholder="SEARCH" 
+              className="search-input" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
         </header>
 
         <div className="products-grid slim-board">
           {loading ? (
             <div className="loading-products">Loading products...</div>
-          ) : products.length === 0 ? (
+          ) : products.filter(p => 
+              p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+              (p.category?.name || 'APPAREL').toLowerCase().includes(searchTerm.toLowerCase())
+            ).length === 0 ? (
             <div className="no-products">No products found</div>
           ) : (
-            products.map((product) => (
+            products
+              .filter(p => 
+                p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                (p.category?.name || 'APPAREL').toLowerCase().includes(searchTerm.toLowerCase())
+              )
+              .map((product) => (
               <div 
                 key={product.id} 
                 className="product-card"
@@ -1151,7 +1360,17 @@ function App() {
                   if (!user) {
                     setCurrentPage('login')
                   } else {
+                    // Reset address fields for a fresh start (fixes map/autocomplete issue)
+                    setSearchQuery('')
+                    setShippingAddress({
+                      street: '',
+                      city: '',
+                      postalCode: '',
+                      country: 'ZA'
+                    })
+                    setCheckoutStep(1)
                     setCurrentPage('checkout')
+                    fetchSavedAddresses()
                   }
                 }}
               >
@@ -1272,12 +1491,15 @@ function App() {
       console.log('=== PAYMENT DEBUG START ===');
       
       try {
-        const orderRef = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const amount = getCartTotal() * 1.15;
-        const amountInCents = Math.round(amount * 100);
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        const shortId = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        const orderNumber = `GS-${shortId}`;
+        const subtotal = getCartTotal();
+        const total = subtotal * 1.15;
+        const amountInCents = Math.round(total * 100);
         
-        console.log('1. Order Ref:', orderRef);
-        console.log('2. Amount (R):', amount);
+        console.log('1. Order Number:', orderNumber);
+        console.log('2. Amount (R):', total);
         console.log('3. Amount (cents):', amountInCents);
         console.log('4. User:', user?.id, user?.email);
         
@@ -1293,7 +1515,7 @@ function App() {
           body: JSON.stringify({
             amount: amountInCents,
             currency: 'ZAR',
-            reference: orderRef,
+            reference: orderNumber,
             returnUrl: isNative ? 'gymshark-clone://payment-success' : window.location.origin,
             metadata: {
               userId: user.id,
@@ -1335,23 +1557,67 @@ function App() {
         
         // Save pending order before redirect
         console.log('11. Saving order to database...');
-        const { error: dbError } = await supabase.from('orders').insert({
+        const { data: orderData, error: dbError } = await supabase.from('orders').insert({
           user_id: user.id,
-          order_reference: orderRef,
-          total_amount: amount,
+          order_number: orderNumber,
+          subtotal: subtotal,
+          total: total,
           shipping_address: shippingAddress,
-          payment_method: 'card',
-          status: 'pending'
-        });
+          status: 'pending',
+          payment_status: 'pending'
+        }).select().single();
         
         if (dbError) {
           console.error('12. Database Error:', dbError);
-        } else {
+        } else if (orderData) {
           console.log('12. Order saved successfully');
+          
+          try {
+            // Insert Order Items
+            if (cart.length > 0) {
+              await supabase.from('order_items').insert(
+                cart.map(item => ({
+                  order_id: orderData.id,
+                  product_id: item.product.id,
+                  variant_id: item.variantId,
+                  sku: item.product.slug + '-' + item.size, // Construct a temp SKU
+                  product_name: item.product.name,
+                  variant_name: item.size,
+                  quantity: item.quantity,
+                  unit_price: item.product.base_price,
+                  total_price: item.product.base_price * item.quantity
+                }))
+              );
+            }
+            
+            // Insert Shipping Address
+            await supabase.from('addresses').insert({
+              user_id: user.id,
+              address_type: 'shipping',
+              first_name: user.first_name || 'Customer',
+              last_name: user.last_name || 'Name',
+              street_address: shippingAddress.street,
+              city: shippingAddress.city,
+              postal_code: shippingAddress.postalCode,
+              country: shippingAddress.country
+            });
+            
+            // Insert Initial Milestone
+            await supabase.from('order_milestones').insert({
+              order_id: orderData.id,
+              milestone: 'placed',
+              title: 'Order Placed',
+              description: 'Your order has been started pending payment'
+            });
+          } catch (e) {
+            console.error('12b. Secondary Insert Error:', e);
+          }
         }
         
         // Store order ref for success page
-        localStorage.setItem('pending-order-ref', orderRef);
+        localStorage.setItem('pending-order-ref', orderNumber);
+        // Store total for fallback on return
+        localStorage.setItem('pending-order-total', total.toString());
         
         console.log('13. Redirecting to Yoco...');
         console.log('=== PAYMENT DEBUG END ===');
@@ -1365,14 +1631,14 @@ function App() {
           const checkPaymentInterval = setInterval(async () => {
             const { data: orderData } = await supabase
               .from('orders')
-              .select('status, total_amount')
-              .eq('order_reference', orderRef)
+              .select('status, total')
+              .eq('order_number', orderNumber)
               .single();
               
             if (orderData && orderData.status === 'paid') {
               clearInterval(checkPaymentInterval);
               await Browser.close(); // Close the Yoco overlay
-              setConfirmedOrderTotal(orderData.total_amount);
+              setConfirmedOrderTotal(orderData.total);
               setCart([]);
               setCheckoutStep(3); // Go to success page
               setCurrentPage('checkout');
@@ -1550,6 +1816,39 @@ function App() {
                 </button>
               </div>
 
+              {/* Saved Addresses Section */}
+              {loadingSavedAddresses ? (
+                <div className="loading-small">Loading addresses...</div>
+              ) : savedAddresses.length > 0 && (
+                <div className="saved-addresses-section">
+                  <label className="section-label">Last Used Address</label>
+                  <div className="saved-addresses-grid">
+                    {savedAddresses.slice(0, 1).map((addr) => (
+                      <div 
+                        key={addr.id} 
+                        className="saved-address-card"
+                        onClick={() => {
+                          setShippingAddress({
+                            street: addr.street_address,
+                            city: addr.city,
+                            postalCode: addr.postal_code,
+                            country: addr.country
+                          })
+                          setSearchQuery(addr.street_address + ', ' + addr.city)
+                        }}
+                      >
+                        <div className="saved-address-header">
+                          <IconHome />
+                          <span className="saved-address-type">{addr.address_type}</span>
+                        </div>
+                        <p className="saved-address-text">{addr.street_address}</p>
+                        <p className="saved-address-city">{addr.city}, {addr.postal_code}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Address Search */}
               <div className="address-search">
                 <label>Search Address</label>
@@ -1703,16 +2002,34 @@ function App() {
             <div className="order-confirmation-full">
               <OrderConfirmation 
                 total={confirmedOrderTotal || getCartTotal() * 1.15}
-                orderRef={confirmedOrderRef}
+                orderRef={confirmedOrderNumber}
                 onContinueShopping={() => {
                   setCart([])
                   setCheckoutStep(1)
                   setCurrentPage('home')
                 }}
-                onViewOrderStatus={() => {
-                  setCart([])
+                onViewOrderStatus={async () => {
+                  // Fetch the order by reference and navigate to milestone tracker
+                  if (confirmedOrderNumber) {
+                    const { data } = await supabase
+                      .from('orders')
+                      .select('*')
+                      .eq('order_number', confirmedOrderNumber)
+                      .single()
+                    if (data) {
+                      _setSelectedOrder(data)
+                    } else {
+                      _setSelectedOrder({
+                        id: confirmedOrderId,
+                        order_number: confirmedOrderNumber,
+                        total: confirmedOrderTotal,
+                        status: 'paid',
+                        created_at: new Date().toISOString()
+                      })
+                    }
+                  }
                   setCheckoutStep(1)
-                  setCurrentPage('orders')
+                  setCurrentPage('order-status')
                 }}
               />
             </div>
@@ -1803,26 +2120,6 @@ function App() {
           </div>
         </div>
 
-        {/* Payment Info Card */}
-        <div className="profile-card">
-          <h2 className="profile-card-title">Payment info</h2>
-          <div className="profile-list">
-            <div className="profile-list-item">
-              <div className="profile-list-icon">
-                <IconGift />
-              </div>
-              <span className="profile-list-label">Loyalty points</span>
-              <IconChevronRight />
-            </div>
-            <div className="profile-list-item">
-              <div className="profile-list-icon">
-                <IconCreditCard />
-              </div>
-              <span className="profile-list-label">Payment methods</span>
-              <IconChevronRight />
-            </div>
-          </div>
-        </div>
 
         {/* Settings Card */}
         <div className="profile-card">
@@ -1852,6 +2149,14 @@ function App() {
               <span className="profile-list-value">Enabled</span>
               <IconChevronRight />
             </div>
+            <div className="profile-list-item" onClick={() => setCurrentPage('user-settings')}>
+              <div className="profile-list-icon">
+                <IconUserForm />
+              </div>
+              <span className="profile-list-label">Account Settings</span>
+              <span className="profile-list-value">Manage</span>
+              <IconChevronRight />
+            </div>
             <div className="profile-list-item">
               <div className="profile-list-icon">
                 <IconHeadphones />
@@ -1862,15 +2167,22 @@ function App() {
           </div>
         </div>
 
-        {/* Property Management Card */}
+        {/* Support Section Card */}
         <div className="profile-card">
-          <h2 className="profile-card-title">Manage your Property</h2>
+          <h2 className="profile-card-title">Support</h2>
           <div className="profile-list">
-            <div className="profile-list-item">
+            <div className="profile-list-item" onClick={() => setCurrentPage('return-policy')}>
               <div className="profile-list-icon">
-                <IconHandshake />
+                <IconPackage />
               </div>
-              <span className="profile-list-label">List your property</span>
+              <span className="profile-list-label">Return Policy</span>
+              <IconChevronRight />
+            </div>
+            <div className="profile-list-item" onClick={() => setCurrentPage('faq')}>
+              <div className="profile-list-icon">
+                <IconHelp />
+              </div>
+              <span className="profile-list-label">FAQ's</span>
               <IconChevronRight />
             </div>
           </div>
@@ -1897,26 +2209,6 @@ function App() {
 
   // ORDERS PAGE
   if (currentPage === 'orders') {
-    const [orders, setOrders] = useState<any[]>([])
-    const [loadingOrders, setLoadingOrders] = useState(true)
-    
-    useEffect(() => {
-      const fetchOrders = async () => {
-        if (!user) return
-        const { data, error } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-        
-        if (!error && data) {
-          setOrders(data)
-        }
-        setLoadingOrders(false)
-      }
-      fetchOrders()
-    }, [user])
-    
     return (
       <div className="page orders-page">
         <header className="page-header">
@@ -1931,7 +2223,11 @@ function App() {
             <div className="orders-loading">Loading orders...</div>
           ) : orders.length === 0 ? (
             <div className="orders-empty">
-              <p>No orders yet</p>
+              <div className="orders-empty-icon">
+                <IconPackage />
+              </div>
+              <p className="orders-empty-title">No orders yet</p>
+              <p className="orders-empty-subtitle">Your order history will appear here</p>
               <button className="btn btn-primary" onClick={() => setCurrentPage('home')}>
                 Start Shopping
               </button>
@@ -1946,8 +2242,16 @@ function App() {
                   setCurrentPage('order-status')
                 }}
               >
-                <div className="order-header">
-                  <span className="order-id">#{order.order_reference}</span>
+                <div className="order-card-top">
+                  <div className="order-card-ref">
+                    <IconPackage />
+                    <span>#{order.order_number}</span>
+                  </div>
+                  <span className={`order-status-badge ${order.status}`}>
+                    {order.status}
+                  </span>
+                </div>
+                <div className="order-card-bottom">
                   <span className="order-date">
                     {new Date(order.created_at).toLocaleDateString('en-ZA', { 
                       day: 'numeric', 
@@ -1955,15 +2259,11 @@ function App() {
                       year: 'numeric' 
                     })}
                   </span>
+                  <span className="order-total">R{order.total?.toFixed(2)}</span>
                 </div>
-                <div className={`order-status-badge ${order.status}`}>
-                  {order.status}
-                </div>
-                <div className="order-footer">
-                  <span className="order-items">
-                    {order.items?.length || 1} item{order.items?.length !== 1 ? 's' : ''}
-                  </span>
-                  <span className="order-total">R{order.total_amount?.toFixed(2)}</span>
+                <div className="order-card-arrow">
+                  <IconChevronRight />
+                  <span>Track Order</span>
                 </div>
               </div>
             ))
@@ -1992,10 +2292,10 @@ function App() {
   // ORDER STATUS PAGE
   if (currentPage === 'order-status') {
     const order = _selectedOrder || {
-      order_reference: 'N/A',
+      order_number: confirmedOrderNumber || 'N/A',
       created_at: new Date().toISOString(),
-      total_amount: 0,
-      status: 'pending'
+      total: confirmedOrderTotal || 0,
+      status: 'paid'
     }
     
     return (
@@ -2004,13 +2304,16 @@ function App() {
           <button className="back-btn" onClick={() => setCurrentPage('orders')}>
             <IconArrowLeft />
           </button>
-          <h1 className="page-title">Order Status</h1>
+          <h1 className="page-title">Order Tracking</h1>
         </header>
 
         <div className="order-status-content">
           <div className="order-info-card">
             <div className="order-info-header">
-              <span className="order-info-id">Order #{order.order_reference}</span>
+              <span className="order-info-id">Order #{order.order_number}</span>
+              <span className={`order-status-badge ${order.status}`}>{order.status}</span>
+            </div>
+            <div className="order-info-meta">
               <span className="order-info-date">
                 Placed on {new Date(order.created_at).toLocaleDateString('en-ZA', { 
                   day: 'numeric', 
@@ -2020,22 +2323,194 @@ function App() {
               </span>
             </div>
             <div className="order-info-total">
-              <span>Total</span>
-              <span className="total-amount">R{order.total_amount?.toFixed(2) || '0.00'}</span>
+              <span>Order Total</span>
+              <span className="total-amount">R{order.total?.toFixed(2) || '0.00'}</span>
             </div>
           </div>
 
           <div className="timeline-container">
             <h3 className="timeline-title">Order Progress</h3>
-            <OrderStatusTimeline status={order.status} />
+            <OrderStatusTimeline status={order.status} dbMilestones={orderMilestones} />
           </div>
 
-          <div className="order-status-actions">
+          <div className="order-status-actions" style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '24px' }}>
             <button 
               className="btn btn-primary btn-full"
-              onClick={() => setCurrentPage('home')}
+              onClick={() => setCurrentPage('search')}
             >
               Continue Shopping
+            </button>
+            <button 
+              className="btn btn-outline btn-full"
+              onClick={() => setCurrentPage('orders')}
+            >
+              Back to Orders
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // RETURN POLICY PAGE
+  if (currentPage === 'return-policy') {
+    return (
+      <div className="page return-policy-page">
+        <header className="page-header sticky-header slim-board" style={{ display: 'flex', alignItems: 'center', gap: '16px', borderBottom: '1px solid #eee' }}>
+          <button className="back-btn" onClick={() => setCurrentPage('profile')}>
+            <IconArrowLeft />
+          </button>
+          <h1 className="page-title" style={{ fontSize: '18px', fontWeight: 900, textTransform: 'uppercase' }}>Return Policy</h1>
+        </header>
+        <div className="policy-content slim-board">
+          <div className="policy-section">
+            <h3 className="policy-h">30-Day Returns</h3>
+            <p className="policy-p">You have 30 days from the date of delivery to return your items for a refund or exchange.</p>
+          </div>
+          <div className="policy-section">
+            <h3 className="policy-h">Condition of Items</h3>
+            <p className="policy-p">Items must be unworn, unwashed, and in their original packaging with tags attached.</p>
+          </div>
+          <div className="policy-section">
+            <h3 className="policy-h">Return Process</h3>
+            <p className="policy-p">1. Log in to your account. 2. Go to 'My Orders'. 3. Select the order and click 'Start Return'.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // FAQ PAGE
+  if (currentPage === 'faq') {
+    const faqs = [
+      { q: "How do I track my order?", a: "Go to your Profile, select 'View Orders', and click on the order you want to track." },
+      { q: "What is the delivery time?", a: "Standard delivery takes 3-5 business days. Express delivery takes 1-2 business days." },
+      { q: "Can I change my delivery address?", a: "Address changes are only possible before the order has been processed for shipping." },
+    ]
+    return (
+      <div className="page faq-page">
+        <header className="page-header sticky-header slim-board" style={{ display: 'flex', alignItems: 'center', gap: '16px', borderBottom: '1px solid #eee' }}>
+          <button className="back-btn" onClick={() => setCurrentPage('profile')}>
+            <IconArrowLeft />
+          </button>
+          <h1 className="page-title" style={{ fontSize: '18px', fontWeight: 900, textTransform: 'uppercase' }}>FAQ's</h1>
+        </header>
+        <div className="faq-content slim-board">
+          {faqs.map((faq, i) => (
+            <div key={i} className="faq-item">
+              <h3 className="faq-question">{faq.q}</h3>
+              <p className="faq-answer">{faq.a}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // USER SETTINGS / ACCOUNT MANAGEMENT
+  if (currentPage === 'user-settings') {
+    if (!user) {
+      setCurrentPage('login')
+      return null
+    }
+
+    const handleUpdateName = async (e: React.FormEvent) => {
+      e.preventDefault()
+      setIsUpdatingProfile(true)
+      setUpdateProfileError('')
+      setUpdateProfileSuccess('')
+      try {
+        const { error } = await supabase.auth.updateUser({
+          data: { first_name: newName }
+        })
+        if (error) throw error
+        setUpdateProfileSuccess('Name updated successfully!')
+      } catch (err: any) {
+        setUpdateProfileError(err.message)
+      } finally {
+        setIsUpdatingProfile(false)
+      }
+    }
+
+    const handleChangePassword = async (e: React.FormEvent) => {
+      e.preventDefault()
+      setIsUpdatingProfile(true)
+      setUpdateProfileError('')
+      setUpdateProfileSuccess('')
+      try {
+        const { error } = await supabase.auth.updateUser({
+          password: newPassword
+        })
+        if (error) throw error
+        setUpdateProfileSuccess('Password changed successfully!')
+        setNewPassword('')
+      } catch (err: any) {
+        setUpdateProfileError(err.message)
+      } finally {
+        setIsUpdatingProfile(false)
+      }
+    }
+
+    const handleDeleteAccount = async () => {
+      if (window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+        alert('Account deletion requested. Our support team will process this within 48 hours.')
+      }
+    }
+
+    return (
+      <div className="page settings-page">
+        <header className="page-header sticky-header slim-board" style={{ display: 'flex', alignItems: 'center', gap: '16px', borderBottom: '1px solid #eee' }}>
+          <button className="back-btn" onClick={() => setCurrentPage('profile')}>
+            <IconArrowLeft />
+          </button>
+          <h1 className="page-title" style={{ fontSize: '18px', fontWeight: 900, textTransform: 'uppercase' }}>Account Settings</h1>
+        </header>
+        
+        <div className="settings-content slim-board">
+          {updateProfileError && <div className="auth-error">{updateProfileError}</div>}
+          {updateProfileSuccess && <div className="success-message" style={{ color: '#10b981', background: '#f0fdf4', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '14px', textAlign: 'center' }}>{updateProfileSuccess}</div>}
+          
+          <div className="settings-section">
+            <h3 className="section-title">Change Full Name</h3>
+            <form onSubmit={handleUpdateName} className="settings-form">
+              <input 
+                type="text" 
+                placeholder="New Full Name" 
+                className="settings-input"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+              <button type="submit" className="btn btn-primary btn-full" disabled={isUpdatingProfile} style={{ marginTop: '12px' }}>
+                Update Name
+              </button>
+            </form>
+          </div>
+
+          <div className="settings-section" style={{ marginTop: '32px' }}>
+            <h3 className="section-title">Change Password</h3>
+            <form onSubmit={handleChangePassword} className="settings-form">
+              <input 
+                type="password" 
+                placeholder="New Password" 
+                className="settings-input"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <button type="submit" className="btn btn-primary btn-full" disabled={isUpdatingProfile} style={{ marginTop: '12px' }}>
+                Change Password
+              </button>
+            </form>
+          </div>
+
+          <div className="settings-section danger-zone" style={{ marginTop: '48px', paddingTop: '32px', borderTop: '1px solid #eee' }}>
+            <h3 className="section-title" style={{ color: '#ef4444' }}>Danger Zone</h3>
+            <p className="settings-p" style={{ fontSize: '13px', color: '#6b7280', marginBottom: '16px' }}>Deleting your account is permanent and cannot be undone.</p>
+            <button 
+              onClick={handleDeleteAccount} 
+              className="btn btn-outline btn-full" 
+              style={{ borderColor: '#ef4444', color: '#ef4444' }}
+            >
+              Request Account Deletion
             </button>
           </div>
         </div>
